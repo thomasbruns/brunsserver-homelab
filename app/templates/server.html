@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Servidor</h1>
+<p class="muted" id="stamp">carregando…</p>
+
+<div class="tiles" id="tiles"></div>
+
+<h2>Armazenamento</h2>
+<div id="mounts"></div>
+
+<h2>Temperatura</h2>
+<div class="row ranges" id="ranges">
+  <button data-h="24" class="on">24h</button>
+  <button data-h="168">7 dias</button>
+  <button data-h="720">30 dias</button>
+</div>
+<div class="chart-box"><canvas id="chart"></canvas></div>
+<p class="muted" id="chart-note">Amostra a cada {{ interval_min }} min.</p>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.js"></script>
+<script>
+const tempClass = t => t == null ? "" : t >= 85 ? "bad" : t >= 70 ? "warn" : "ok";
+const pctClass = p => p == null ? "" : p >= 90 ? "bad" : p >= 85 ? "warn" : "ok";
+
+function tile(label, value, cls = "") {
+  return el("div", {class: `tile ${cls}`}, el("span", {class: "muted"}, label), el("strong", {}, value));
+}
+
+async function refreshSystem() {
+  try {
+    const s = await getJSON("/api/system");
+    const tiles = [
+      tile("CPU", s.cpu_temp == null ? "—" : `${s.cpu_temp} °C`, tempClass(s.cpu_temp)),
+      tile("Carga (1/5/15)", s.load.join(" · ") + `  /${s.cpus}`),
+      tile("RAM", s.mem_percent == null ? "—" : `${s.mem_percent}%`, pctClass(s.mem_percent)),
+      tile("Ligado há", s.uptime),
+      ...Object.entries(s.disk_temps).map(([d, t]) => tile(d, `${t} °C`, tempClass(t))),
+    ];
+    $("#tiles").replaceChildren(...tiles);
+    $("#mounts").replaceChildren(...s.mounts.map(m => el("div", {class: "mount"},
+      el("div", {class: "row"}, el("code", {}, m.mount), el("span", {class: "spacer"}),
+        el("span", {class: m.mounted ? "muted" : "pill down"},
+          m.percent == null ? "indisponível" : `${m.used_gb} / ${m.total_gb} GB (${m.percent}%)`
+          + (m.mounted || m.mount === "/" ? "" : " · NÃO MONTADO"))),
+      el("div", {class: "bar-track"}, el("div", {class: `bar-fill ${pctClass(m.percent)}`, style: `width:${m.percent || 0}%`})))));
+    $("#stamp").textContent = `${s.hostname} · atualizado ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    $("#stamp").textContent = "falha ao buscar dados: " + e.message;
+  }
+}
+
+const COLORS = ["#4cc2ff", "#ffb454", "#7ee787", "#d2a8ff"];
+let chart, hours = 24;
+
+async function refreshChart() {
+  const data = await getJSON(`/api/temps?hours=${hours}`);
+  const rows = data.samples;
+  const fmt = ts => {
+    const d = new Date(ts * 1000);
+    return hours <= 24 ? d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})
+                       : d.toLocaleDateString([], {day: "2-digit", month: "2-digit"}) + " " + d.toLocaleTimeString([], {hour: "2-digit"});
+  };
+  const devices = [...new Set(rows.flatMap(r => Object.keys(r.disk_temps)))];
+  const series = [{label: "CPU", data: rows.map(r => r.cpu_temp)},
+                  ...devices.map(d => ({label: d, data: rows.map(r => r.disk_temps[d] ?? null)}))];
+  const datasets = series.map((s, i) => ({...s, borderColor: COLORS[i % 4], backgroundColor: COLORS[i % 4],
+    borderWidth: 2, pointRadius: rows.length > 100 ? 0 : 2, tension: .25, spanGaps: true}));
+  const labels = rows.map(r => fmt(r.ts));
+  if (!chart) {
+    chart = new Chart($("#chart"), {
+      type: "line", data: {labels, datasets},
+      options: {responsive: true, maintainAspectRatio: false, interaction: {mode: "index", intersect: false},
+        scales: {y: {title: {display: true, text: "°C"}}, x: {ticks: {maxTicksLimit: 6}}},
+        plugins: {legend: {labels: {boxWidth: 12}}}}});
+  } else {
+    chart.data = {labels, datasets};
+    chart.update();
+  }
+  $("#chart-note").textContent = rows.length
+    ? `${rows.length} amostras · uma a cada ${Math.round(data.interval_seconds / 60)} min.`
+    : "Ainda sem amostras — a primeira é gravada quando o app sobe.";
+}
+
+$("#ranges").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  hours = +b.dataset.h;
+  document.querySelectorAll("#ranges button").forEach(x => x.classList.toggle("on", x === b));
+  refreshChart();
+});
+
+every(refreshSystem, 30000);
+every(refreshChart, 300000);
+</script>
+{% endblock %}

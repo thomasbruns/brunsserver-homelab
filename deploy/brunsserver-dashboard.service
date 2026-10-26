@@ -1,0 +1,17 @@
+[Unit]
+Description=brunsserver dashboard (monitoramento + documentação)
+After=network-online.target tailscaled.service docker.service
+Wants=network-online.target
+
+[Service]
+User=%USER%
+WorkingDirectory=%REPO%
+# Escuta SÓ no IP do Tailscale: nada fica exposto na LAN/internet.
+ExecStart=%REPO%/.venv/bin/uvicorn app.main:app --host %BIND% --port %PORT%
+# Se o Tailscale ainda não subiu no boot, o bind falha e tentamos de novo.
+Restart=always
+RestartSec=5
+Environment=DASH_SAMPLE_SECONDS=1800
+
+[Install]
+WantedBy=multi-user.target

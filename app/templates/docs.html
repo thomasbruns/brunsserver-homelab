@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Documentação</h1>
+
+<h2>Serviços</h2>
+<p class="muted">Gerado a partir do <code>services.yaml</code>. Toque em um serviço para ver os detalhes.</p>
+
+<table class="ports">
+  <thead><tr><th>Serviço</th><th>Portas</th><th>Acesso</th></tr></thead>
+  <tbody>
+  {% for s in services %}
+    <tr>
+      <td>{{ s.name or s.id }}</td>
+      <td>{% for p in s.ports or [] %}<code class="chip">{{ p }}</code> {% else %}<span class="muted">—</span>{% endfor %}</td>
+      <td>
+        {% if s.web_port %}
+        <a href="http://{{ request.url.hostname }}:{{ s.web_port }}{{ s.web_path or '/' }}" target="_blank" rel="noopener">
+          :{{ s.web_port }}{{ s.web_path or '/' }} ↗</a>
+        {% else %}<span class="muted">sem interface web</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% for s in services %}
+<details class="doc">
+  <summary><strong>{{ s.name or s.id }}</strong> <span class="muted">— {{ s.description }}</span></summary>
+  <dl>
+    {% if s.path %}<dt>Dados / config</dt><dd><code>{{ s.path }}</code></dd>{% endif %}
+    {% if s.check %}<dt>Como é monitorado</dt>
+      <dd><code>{{ s.check.kind }}</code>
+        {%- if s.check.unit %} · <code>{{ s.check.unit }}</code>{% endif %}
+        {%- if s.check.container %} · <code>{{ s.check.container }}</code>{% endif %}
+        {%- if s.check.containers %} · {% for c in s.check.containers %}<code>{{ c }}</code> {% endfor %}{% endif %}
+        {%- if s.check.match %} · <code>{{ s.check.match }}</code>{% endif %}</dd>{% endif %}
+    {% if s.restart %}<dt>Reiniciar</dt><dd><code class="copy">{{ s.restart }}</code></dd>{% endif %}
+    {% if s.logs %}<dt>Logs</dt><dd><code class="copy">{{ s.logs }}</code></dd>{% endif %}
+    {% if s.backup %}<dt>Backup</dt><dd>{{ s.backup }}</dd>{% endif %}
+    {% if s.notes %}<dt>Notas</dt><dd>{{ s.notes }}</dd>{% endif %}
+  </dl>
+</details>
+{% endfor %}
+
+<h2>Servidor</h2>
+<div class="prose">{{ extra_html | safe }}</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Toque em um comando para copiar.
+document.querySelectorAll("code.copy").forEach(c => {
+  c.title = "toque para copiar";
+  c.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(c.textContent); c.classList.add("copied");
+          setTimeout(() => c.classList.remove("copied"), 800); } catch (e) {}
+  });
+});
+</script>
+{% endblock %}

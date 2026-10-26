@@ -1,0 +1,108 @@
+# Fonte da verdade do dashboard: alimenta o monitoramento (página Serviços)
+# e a documentação (página Documentação). É relido a cada request: editar
+# este arquivo NÃO exige reiniciar o app.
+#
+# Campos de cada serviço:
+#   id, name, description  identificação
+#   check                  como saber se está no ar (ver abaixo)
+#   ports                  portas expostas, ex.: "8080/tcp" (padrão tcp)
+#   web_port, web_path     se tem interface web: vira o botão "abrir" (usa o host do navegador)
+#   path                   onde ficam dados/config no servidor
+#   restart, logs          comandos úteis (na doc, toque para copiar)
+#   backup, notes          texto livre
+#
+# check.kind:
+#   systemd  -> unit: nome.service
+#   docker   -> container: nome   (ou containers: [a, b] para uma stack inteira)
+#   process  -> match: padrão de `pgrep -f` (útil p/ processos de outro usuário)
+#
+# Itens marcados com "CONFIRMAR" foram preenchidos com o padrão do projeto/imagem;
+# ajuste conforme o que realmente roda aí (`docker ps`, `ss -tuln`).
+
+# Discos para ler a temperatura (precisa de sudo sem senha p/ smartctl, ver README).
+# Veja os nomes reais com `lsblk`.
+disks: [/dev/sda, /dev/sdb]   # CONFIRMAR
+
+# Pontos de montagem exibidos na página Servidor.
+mounts: ["/", "/mnt/hdd"]
+
+# Portas que escutam na rede mas não precisam de documentação.
+ignore_ports: ["22/tcp", "41641/udp"]   # ssh, tailscale
+
+services:
+  - id: nextcloud
+    name: Nextcloud
+    description: Arquivos e fotos da família
+    check:
+      kind: docker
+      containers: [nextcloud-app-1, nextcloud-db-1]
+    ports: ["8080/tcp"]
+    web_port: 8080
+    path: /home/thomasbruns/docker/nextcloud
+    restart: cd ~/docker/nextcloud && docker compose restart
+    logs: docker logs -f nextcloud-app-1
+    backup: restic (tag nextcloud), 3h da manhã via cron do root
+    notes: Dados em bind mounts (data, html, db). Dump do MariaDB em db-dump.
+
+  - id: immich
+    name: Immich
+    description: Fotos (substitui o Google Fotos)
+    check:
+      kind: docker
+      # CONFIRMAR os nomes com `docker ps`
+      containers: [immich_server, immich_machine_learning, immich_redis, immich_postgres]
+    ports: ["2283/tcp"]   # CONFIRMAR
+    web_port: 2283        # CONFIRMAR
+    path: /home/thomasbruns/docker/immich
+    restart: cd ~/docker/immich && docker compose restart
+    logs: docker logs -f immich_server
+    notes: Acesso só via Tailscale.
+
+  - id: zomboid
+    name: Project Zomboid
+    description: Servidor thomas_ian
+    check:
+      kind: process
+      match: ProjectZomboid   # CONFIRMAR com `pgrep -fa Zomboid`
+    ports: ["16261/udp", "16262/udp"]
+    path: /home/pzuser/Zomboid
+    restart: sudo -iu pzuser tmux attach -t zomboid
+    backup: restic (tag zomboid)
+    notes: Roda como pzuser numa sessão tmux "zomboid". Amigos entram via Tailscale (machine sharing).
+
+  - id: go2rtc
+    name: go2rtc
+    description: Câmeras ICSee (streams)
+    check:
+      kind: systemd
+      unit: go2rtc   # CONFIRMAR: se roda em Docker, troque por kind: docker
+    ports: ["1984/tcp", "8554/tcp"]   # API/UI e RTSP (padrões)
+    web_port: 1984
+    path: /etc/go2rtc.yaml
+    restart: sudo systemctl restart go2rtc
+    logs: journalctl -u go2rtc -f
+    backup: restic (tag sistema)
+    notes: Acesso pelo celular via Tailscale. O go2rtc.yaml tem credenciais das câmeras.
+
+  - id: tailscale
+    name: Tailscale
+    description: Acesso remoto e compartilhamento com os amigos
+    check:
+      kind: systemd
+      unit: tailscaled
+    path: /var/lib/tailscale
+    restart: sudo systemctl restart tailscaled
+    logs: journalctl -u tailscaled -f
+    backup: restic (tag sistema)
+
+  - id: dashboard
+    name: Este dashboard
+    description: Monitoramento e documentação do brunsserver
+    check:
+      kind: systemd
+      unit: brunsserver-dashboard
+    ports: ["8088/tcp"]
+    web_port: 8088
+    path: /home/thomasbruns/brunsserver-homelab
+    restart: sudo systemctl restart brunsserver-dashboard
+    logs: journalctl -u brunsserver-dashboard -f

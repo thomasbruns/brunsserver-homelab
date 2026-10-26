@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Serviços</h1>
+<p class="muted" id="stamp">carregando…</p>
+<div id="ports-warning"></div>
+<div class="grid" id="cards"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATE_LABEL = {up: "ativo", degraded: "com problema", down: "parado", missing: "não encontrado", unknown: "desconhecido"};
+
+function renderCard(s) {
+  const link = s.web_port
+    ? el("a", {class: "btn", href: `http://${location.hostname}:${s.web_port}${s.web_path}`, target: "_blank", rel: "noopener"}, "abrir ↗")
+    : null;
+  return el("article", {class: `card ${s.state}`},
+    el("div", {class: "row"},
+      el("span", {class: `dot ${s.state}`}),
+      el("strong", {}, s.name),
+      el("span", {class: "spacer"}),
+      el("span", {class: `pill ${s.state}`}, STATE_LABEL[s.state] || s.state)),
+    el("p", {class: "muted"}, s.description),
+    el("div", {class: "kv"},
+      el("span", {class: "muted"}, "no ar há"), el("span", {}, s.uptime),
+      el("span", {class: "muted"}, "detalhe"), el("span", {}, s.detail || "—")),
+    el("div", {class: "row wrap-row"},
+      ...s.ports.map(p => el("code", {class: "chip"}, p)),
+      el("span", {class: "spacer"}),
+      link));
+}
+
+async function refresh() {
+  try {
+    const list = await getJSON("/api/services");
+    const box = $("#cards");
+    box.replaceChildren(...list.map(renderCard));
+    const up = list.filter(s => s.state === "up").length;
+    $("#stamp").textContent = `${up}/${list.length} ativos · atualizado ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    $("#stamp").textContent = "falha ao buscar status: " + e.message;
+  }
+}
+
+async function refreshPorts() {
+  try {
+    const p = await getJSON("/api/ports");
+    const box = $("#ports-warning");
+    box.replaceChildren();
+    if (!p.available) return;
+    if (p.undocumented.length)
+      box.append(el("div", {class: "alert warn"},
+        "Escutando e não documentado: ", ...p.undocumented.map(x => el("code", {class: "chip"}, x))));
+    if (p.not_listening.length)
+      box.append(el("div", {class: "alert bad"},
+        "Documentado mas ninguém escutando: ", ...p.not_listening.map(x => el("code", {class: "chip"}, x))));
+  } catch (e) { /* aviso é opcional */ }
+}
+
+every(refresh, 15000);
+every(refreshPorts, 60000);
+</script>
+{% endblock %}
