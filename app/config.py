@@ -33,3 +33,10 @@ def parse_port(spec: str | int) -> tuple[int, str]:
     """'8080/tcp' -> (8080, 'tcp'); '8080' -> (8080, 'tcp')."""
     port, _, proto = str(spec).partition("/")
     return int(port), (proto or "tcp").lower()
+
+
+def parse_port_range(spec: str | int) -> tuple[int, int, str]:
+    """'32768-60999/tcp' -> (32768, 60999, 'tcp'); '22/tcp' -> (22, 22, 'tcp')."""
+    ports, _, proto = str(spec).partition("/")
+    lo, _, hi = ports.partition("-")
+    return int(lo), int(hi or lo), (proto or "tcp").lower()

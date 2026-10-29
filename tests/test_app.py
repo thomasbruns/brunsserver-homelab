@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.collectors import ports, services
-from app.config import parse_port
+from app.config import parse_port, parse_port_range
 from app.util import humanize
 
 SS_OUTPUT = """\
@@ -20,10 +20,31 @@ tcp   LISTEN 0 4096 100.80.165.68:9999    0.0.0.0:*
 """
 
 
+# Linhas reais de `sudo ss -tulnp` no brunsserver (com -H, sem cabeçalho).
+SS_REAL = """\
+tcp   LISTEN 0 4096  100.80.165.68%tailscale0:47751  0.0.0.0:*  users:(("tailscaled",pid=559273,fd=24))
+tcp   LISTEN 0 4096  [fd7a:115c:a1e0::9101:a5d9]%tailscale0:37369  [::]:*  users:(("tailscaled",pid=559273,fd=25))
+tcp   LISTEN 0 4096  *:8555  *:*  users:(("go2rtc",pid=1487,fd=7))
+udp   UNCONN 0 0  [fe80::7a2b:cbff:febf:f530]%eno1:546  [::]:*  users:(("systemd-network",pid=64750,fd=33))
+"""
+
+
 def test_parse_ss_ignores_loopback_and_dedupes():
-    assert ports.parse_ss(SS_OUTPUT) == {
+    assert ports.parse_ss(SS_OUTPUT).keys() == {
         (22, "tcp"), (8080, "tcp"), (16261, "udp"), (41641, "udp"), (9999, "tcp"),
     }
+
+
+def test_parse_local_ipv6_with_interface():
+    assert ports.parse_local("[fd7a:115c:a1e0::9101:a5d9]%tailscale0:37369") == (
+        "fd7a:115c:a1e0::9101:a5d9", "tailscale0", "37369")
+    assert ports.parse_local("100.80.165.68%tailscale0:47751") == ("100.80.165.68", "tailscale0", "47751")
+    assert ports.parse_local("[::]:8080") == ("::", "", "8080")
+    assert ports.parse_local("*:8555") == ("*", "", "8555")
+
+
+def test_parse_ss_real_ignores_tailscale_and_link_local_and_reads_process():
+    assert ports.parse_ss(SS_REAL) == {(8555, "tcp"): "go2rtc"}
 
 
 def test_check_ports_reports_diff(monkeypatch):
@@ -33,13 +54,42 @@ def test_check_ports_reports_diff(monkeypatch):
         "ignore_ports": ["22/tcp", "41641/udp"],
     }
     res = ports.check_ports(cfg)
-    assert res["undocumented"] == ["9999/tcp"]
+    assert res["undocumented"] == [{"port": 9999, "proto": "tcp", "process": None}]
     assert res["not_listening"] == ["1984/tcp"]
+
+
+def test_check_ports_real_output(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, timeout=5.0):
+        calls.append(cmd)
+        return 0, SS_REAL + "tcp LISTEN 0 4096 0.0.0.0:40000 0.0.0.0:* users:((\"foo\",pid=1,fd=3))\n" \
+                            "tcp LISTEN 0 4096 0.0.0.0:9999 0.0.0.0:* users:((\"bar\",pid=2,fd=3))\n"
+
+    monkeypatch.setattr(ports, "run", fake_run)
+    cfg = {
+        "services": [{"ports": ["1984/tcp", "8554/tcp", "8555/tcp"]}],
+        "ignore_ports": ["546/udp", "32768-60999/tcp"],
+    }
+    res = ports.check_ports(cfg)
+    assert calls == [["sudo", "-n", "ss", "-H", "-tulnp"]]
+    # 8555 documentada (go2rtc), 40000 cai na faixa ignorada, tailscale/fe80 ignorados
+    assert res["undocumented"] == [{"port": 9999, "proto": "tcp", "process": "bar"}]
+    assert res["not_listening"] == ["1984/tcp", "8554/tcp"]
+
+
+def test_check_ports_falls_back_without_sudo(monkeypatch):
+    answers = {"sudo": (1, ""), "ss": (0, SS_OUTPUT)}
+    monkeypatch.setattr(ports, "run", lambda cmd, timeout=5.0: answers[cmd[0]])
+    res = ports.check_ports({"services": [], "ignore_ports": []})
+    assert res["available"] and {"port": 9999, "proto": "tcp", "process": None} in res["undocumented"]
 
 
 def test_parse_port_and_humanize():
     assert parse_port("16261/UDP") == (16261, "udp")
     assert parse_port(8080) == (8080, "tcp")
+    assert parse_port_range("32768-60999/tcp") == (32768, 60999, "tcp")
+    assert parse_port_range("22/tcp") == (22, 22, "tcp")
     assert humanize(59) == "0m"
     assert humanize(3 * 3600 + 120) == "3h 2m"
     assert humanize(2 * 86400 + 5 * 3600) == "2d 5h"

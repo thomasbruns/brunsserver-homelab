@@ -21,13 +21,15 @@
 
 # Discos para ler a temperatura (precisa de sudo sem senha p/ smartctl, ver README).
 # Veja os nomes reais com `lsblk`.
-disks: [/dev/sda, /dev/sdb]   # CONFIRMAR
+disks: [/dev/sda, /dev/sdb]   # sda: SSD Kingston 223 GB (sistema), sdb: WDC 465 GB (backup)
 
 # Pontos de montagem exibidos na página Servidor.
 mounts: ["/", "/mnt/hdd"]
 
 # Portas que escutam na rede mas não precisam de documentação.
-ignore_ports: ["22/tcp", "41641/udp"]   # ssh, tailscale
+# Aceita faixas: "32768-60999/tcp". Loopback, link-local (fe80::) e portas presas
+# só a uma interface tailscale* (as aleatórias do tailscaled) já são ignoradas.
+ignore_ports: ["22/tcp", "41641/udp", "546/udp"]   # ssh, tailscale, DHCPv6 (systemd-networkd)
 
 services:
   - id: nextcloud
@@ -49,10 +51,9 @@ services:
     description: Fotos (substitui o Google Fotos)
     check:
       kind: docker
-      # CONFIRMAR os nomes com `docker ps`
       containers: [immich_server, immich_machine_learning, immich_redis, immich_postgres]
-    ports: ["2283/tcp"]   # CONFIRMAR
-    web_port: 2283        # CONFIRMAR
+    ports: ["2283/tcp"]
+    web_port: 2283
     path: /home/thomasbruns/docker/immich
     restart: cd ~/docker/immich && docker compose restart
     logs: docker logs -f immich_server
@@ -63,7 +64,7 @@ services:
     description: Servidor thomas_ian
     check:
       kind: process
-      match: ProjectZomboid   # CONFIRMAR com `pgrep -fa Zomboid`
+      match: ProjectZomboid   # ./ProjectZomboid64 -nosteam -servername thomas_ian
     ports: ["16261/udp", "16262/udp"]
     path: /home/pzuser/Zomboid
     restart: sudo -iu pzuser tmux attach -t zomboid
@@ -75,14 +76,27 @@ services:
     description: Câmeras ICSee (streams)
     check:
       kind: systemd
-      unit: go2rtc   # CONFIRMAR: se roda em Docker, troque por kind: docker
-    ports: ["1984/tcp", "8554/tcp"]   # API/UI e RTSP (padrões)
+      unit: go2rtc
+    ports: ["1984/tcp", "8554/tcp", "8555/tcp"]   # API/UI, RTSP e WebRTC
     web_port: 1984
     path: /etc/go2rtc.yaml
     restart: sudo systemctl restart go2rtc
     logs: journalctl -u go2rtc -f
     backup: restic (tag sistema)
     notes: Acesso pelo celular via Tailscale. O go2rtc.yaml tem credenciais das câmeras.
+
+  - id: jellyfin
+    name: Jellyfin
+    description: Filmes e séries (streaming de mídia)
+    check:
+      kind: systemd
+      unit: jellyfin   # CONFIRMAR com `systemctl status jellyfin`; se for Docker, troque por kind: docker
+    ports: ["8096/tcp"]
+    web_port: 8096
+    path: /var/lib/jellyfin   # CONFIRMAR: padrão do pacote .deb (dados e config)
+    restart: sudo systemctl restart jellyfin   # CONFIRMAR
+    logs: journalctl -u jellyfin -f            # CONFIRMAR
+    notes: Acesso via Tailscale. Pode abrir também 7359/udp (descoberta na rede local); se aparecer como não documentada, adicione aqui ou em ignore_ports.
 
   - id: tailscale
     name: Tailscale

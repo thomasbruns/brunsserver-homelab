@@ -15,6 +15,17 @@ if [[ -z "$BIND" ]]; then
 fi
 
 echo ">> venv + dependências"
+# No Debian/Ubuntu o módulo venv vem num pacote à parte (python3.X-venv); testa antes.
+tmp="$(mktemp -d)"
+if ! python3 -m venv "$tmp/venv" >/dev/null 2>&1; then
+  rm -rf "$tmp"
+  [[ -x "$REPO/.venv/bin/pip" ]] || rm -rf "$REPO/.venv"   # sobra de tentativa anterior
+  pyver="$(python3 -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+  echo "'python3 -m venv' não funciona. Instale com: sudo apt install python3-venv" \
+       "(ou python$pyver-venv) e rode de novo." >&2
+  exit 1
+fi
+rm -rf "$tmp"
 python3 -m venv "$REPO/.venv"
 "$REPO/.venv/bin/pip" install -q -r "$REPO/requirements.txt"
 

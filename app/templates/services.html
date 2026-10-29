@@ -50,7 +50,9 @@ async function refreshPorts() {
     if (!p.available) return;
     if (p.undocumented.length)
       box.append(el("div", {class: "alert warn"},
-        "Escutando e não documentado: ", ...p.undocumented.map(x => el("code", {class: "chip"}, x))));
+        "Escutando e não documentado: ",
+        ...p.undocumented.map(x => el("code", {class: "chip"},
+          `${x.port}/${x.proto}` + (x.process ? ` · ${x.process}` : "")))));
     if (p.not_listening.length)
       box.append(el("div", {class: "alert bad"},
         "Documentado mas ninguém escutando: ", ...p.not_listening.map(x => el("code", {class: "chip"}, x))));

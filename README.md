@@ -23,6 +23,8 @@ git clone <seu-remoto> ~/brunsserver-homelab && cd ~/brunsserver-homelab
 ./deploy/install.sh        # venv, deps, unit systemd, enable --now
 ```
 
+Requisito: `python3 -m venv` precisa funcionar. No Debian/Ubuntu ele vem num pacote à parte; se o install reclamar, rode `sudo apt install python3-venv` (ou `python3.X-venv` com a sua versão, ex.: `python3.14-venv`).
+
 O script descobre o IP do Tailscale e faz o app escutar **só nele**, porta 8088 (a 8080 é do Nextcloud). Abra `http://brunsserver:8088` no celular. Para outro IP/porta: `BIND=... PORT=... ./deploy/install.sh`.
 
 Não há login: a proteção é escutar apenas na interface do Tailscale. Não troque `BIND` por `0.0.0.0`.
@@ -35,18 +37,24 @@ Não há login: a proteção é escutar apenas na interface do Tailscale. Não t
   thomasbruns ALL=(root) NOPASSWD: /usr/sbin/smartctl -j -A /dev/sda, /usr/sbin/smartctl -j -A /dev/sdb
   ```
   Ajuste os dispositivos em `disks:` no `services.yaml` (veja com `lsblk`). Sem isso o gráfico mostra só a CPU.
+- **Nome do processo nas portas:** `ss -p` só mostra processos do próprio usuário. Crie `/etc/sudoers.d/dashboard-ss` com `sudo visudo -f` (confira o caminho com `command -v ss`):
+  ```
+  thomasbruns ALL=(root) NOPASSWD: /usr/bin/ss -H -tulnp
+  ```
+  Valide com `sudo visudo -c`. Sem isso as portas não documentadas aparecem sem o nome do processo.
 - **Zomboid:** roda como `pzuser`, então o status vem de `pgrep` (kind `process`), sem sudo.
 
 ### Ajustes depois da primeira subida
 
-Os itens marcados `CONFIRMAR` no `services.yaml` foram preenchidos com padrões: nomes dos containers do Immich, porta do Immich (2283), se o go2rtc é systemd ou Docker, padrão do processo do Zomboid e os discos. Confira com:
+Nextcloud, Immich, Zomboid, go2rtc e discos já foram conferidos no servidor. Falta o Jellyfin, marcado `CONFIRMAR` no `services.yaml` (preenchido supondo o pacote .deb com unit systemd). Confira com:
 
 ```bash
 docker ps --format 'table {{.Names}}\t{{.Ports}}'
-pgrep -fa Zomboid
-ss -tuln
-lsblk
+systemctl status jellyfin
+sudo ss -tulnp
 ```
+
+Portas presas só ao Tailscale (`%tailscale0`), link-local (`fe80::`) e loopback são ignoradas automaticamente. Para o resto, use `ignore_ports` (aceita faixas, ex.: `"32768-60999/tcp"`).
 
 ## Desenvolvimento
 
