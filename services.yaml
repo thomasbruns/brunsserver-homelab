@@ -6,6 +6,7 @@
 #   id, name, description  identificação
 #   check                  como saber se está no ar (ver abaixo)
 #   ports                  portas expostas, ex.: "8080/tcp" (padrão tcp)
+#   optional_ports         dessas, as que podem não estar escutando (sem aviso de "ninguém escutando")
 #   web_port, web_path     se tem interface web: vira o botão "abrir" (usa o host do navegador)
 #   path                   onde ficam dados/config no servidor
 #   restart, logs          comandos úteis (na doc, toque para copiar)
@@ -66,6 +67,7 @@ services:
       kind: process
       match: ProjectZomboid   # ./ProjectZomboid64 -nosteam -servername thomas_ian
     ports: ["16261/udp", "16262/udp"]
+    optional_ports: ["16262/udp"]   # só escuta com alguém conectado
     path: /home/pzuser/Zomboid
     restart: sudo -iu pzuser tmux attach -t zomboid
     backup: restic (tag zomboid)

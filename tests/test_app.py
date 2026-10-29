@@ -78,6 +78,15 @@ def test_check_ports_real_output(monkeypatch):
     assert res["not_listening"] == ["1984/tcp", "8554/tcp"]
 
 
+def test_check_ports_optional_not_reported(monkeypatch):
+    monkeypatch.setattr(ports, "run", lambda cmd, timeout=5.0: (0, SS_OUTPUT))
+    cfg = {
+        "services": [{"ports": ["16261/udp", "16262/udp"], "optional_ports": ["16262/udp"]}],
+        "ignore_ports": [],
+    }
+    assert ports.check_ports(cfg)["not_listening"] == []
+
+
 def test_check_ports_falls_back_without_sudo(monkeypatch):
     answers = {"sudo": (1, ""), "ss": (0, SS_OUTPUT)}
     monkeypatch.setattr(ports, "run", lambda cmd, timeout=5.0: answers[cmd[0]])

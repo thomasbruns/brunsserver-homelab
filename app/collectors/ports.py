@@ -49,6 +49,11 @@ def documented_ports(cfg: dict) -> set[tuple[int, str]]:
     return {parse_port(p) for svc in cfg["services"] for p in svc.get("ports", [])}
 
 
+def optional_ports(cfg: dict) -> set[tuple[int, str]]:
+    """Portas que podem não estar escutando (ex.: só abrem com alguém conectado)."""
+    return {parse_port(p) for svc in cfg["services"] for p in svc.get("optional_ports", [])}
+
+
 def is_ignored(port: int, proto: str, ranges: list[tuple[int, int, str]]) -> bool:
     return any(lo <= port <= hi and proto == p for lo, hi, p in ranges)
 
@@ -70,5 +75,6 @@ def check_ports(cfg: dict) -> dict:
             for p, proto in sorted(listening.keys() - documented)
             if not is_ignored(p, proto, ignored)
         ],
-        "not_listening": [f"{p}/{proto}" for p, proto in sorted(documented - listening.keys())],
+        "not_listening": [f"{p}/{proto}" for p, proto
+                          in sorted(documented - listening.keys() - optional_ports(cfg))],
     }
