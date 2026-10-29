@@ -46,7 +46,7 @@ Não há login: a proteção é escutar apenas na interface do Tailscale. Não t
 
 ### Ajustes depois da primeira subida
 
-Nextcloud, Immich, Zomboid, go2rtc e discos já foram conferidos no servidor. Falta o Jellyfin, marcado `CONFIRMAR` no `services.yaml` (preenchido supondo o pacote .deb com unit systemd). Confira com:
+Todos os serviços e discos do `services.yaml` já foram conferidos no servidor. Ao adicionar um serviço novo, confira com:
 
 ```bash
 docker ps --format 'table {{.Names}}\t{{.Ports}}'

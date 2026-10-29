@@ -89,14 +89,14 @@ services:
     name: Jellyfin
     description: Filmes e séries (streaming de mídia)
     check:
-      kind: systemd
-      unit: jellyfin   # CONFIRMAR com `systemctl status jellyfin`; se for Docker, troque por kind: docker
+      kind: docker
+      container: jellyfin
     ports: ["8096/tcp"]
     web_port: 8096
-    path: /var/lib/jellyfin   # CONFIRMAR: padrão do pacote .deb (dados e config)
-    restart: sudo systemctl restart jellyfin   # CONFIRMAR
-    logs: journalctl -u jellyfin -f            # CONFIRMAR
-    notes: Acesso via Tailscale. Pode abrir também 7359/udp (descoberta na rede local); se aparecer como não documentada, adicione aqui ou em ignore_ports.
+    path: /home/thomasbruns/docker/jellyfin   # config/ e cache/
+    restart: docker restart jellyfin
+    logs: docker logs -f jellyfin
+    notes: "Acesso via Tailscale. A mídia vem da pasta do Nextcloud: .../brunsserveradmin/files/Drive  Bruns/Filmes e Séries (montadas em /media/filmes e /media/series)."
 
   - id: tailscale
     name: Tailscale
