@@ -26,15 +26,20 @@ def init() -> None:
 
 
 def close() -> None:
+    # Com o lock: a amostra roda numa thread que o cancelamento da task não para,
+    # e fechar a conexão no meio de um execute derruba o processo (segfault no sqlite).
     global _conn
-    if _conn:
-        _conn.close()
-        _conn = None
+    with _lock:
+        if _conn:
+            _conn.close()
+            _conn = None
 
 
 def insert_sample(snap: dict) -> None:
     root = next((m["percent"] for m in snap["mounts"] if m["mount"] == "/"), None)
     with _lock:
+        if _conn is None:  # app desligando
+            return
         _conn.execute(
             "insert or replace into samples values(?,?,?,?,?,?)",
             (int(time.time()), snap["cpu_temp"], snap["load"][0], snap["mem_percent"],
@@ -46,6 +51,8 @@ def insert_sample(snap: dict) -> None:
 
 def query(hours: int) -> list[dict]:
     with _lock:
+        if _conn is None:
+            return []
         rows = _conn.execute(
             "select ts, cpu_temp, load1, mem_percent, disk_percent, disk_temps "
             "from samples where ts > ? order by ts",
